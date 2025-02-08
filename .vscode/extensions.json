@@ -1,0 +1,8 @@
+{
+	// 请参阅 https://go.microsoft.com/fwlink/?LinkId=733558
+	// 了解有关 extensions.json 格式的文档
+	"recommendations": [
+		"dbaeumer.vscode-eslint",
+		"ms-vscode.extension-test-runner"
+	]
+}

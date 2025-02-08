@@ -1,0 +1,68 @@
+{
+  "name": "quicklingo",
+  "displayName": "QuickLingo",
+  "description": "Focuses on the fast, intuitive translation experience.",
+  "version": "0.0.1",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.97.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "QuickLingo",
+      "properties": {
+        "quicklingo.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "访问翻译 API 的密钥。建议使用 VS Code 密钥存储保护 API 密钥。"
+        },
+        "quicklingo.apiUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1/chat/completions",
+          "description": "翻译 API 的基础 URL。"
+        },
+        "quicklingo.modelName": {
+          "type": "string",
+          "default": "gpt-4o",
+          "description": "用于翻译的模型名称。"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "quicklingo.translateToChinese",
+        "title": "翻译为中文"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "quicklingo.translateToChinese",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.97.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.19.0"
+  },
+  "dependencies": {
+    "axios": "^1.7.9"
+  }
+}

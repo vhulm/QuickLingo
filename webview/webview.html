@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 根据需要配置 Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
+    <title>翻译结果</title>
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            font-family: Consolas, "Courier New", monospace;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h2 {
+            color: #d4d4d4;
+            border-bottom: 1px solid #3c3c3c;
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+        }
+
+        pre {
+            background-color: #252526;
+            border: 1px solid #3c3c3c;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #6A9955;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>翻译结果</h2>
+    <pre id="output"></pre>
+    <script>
+        window.addEventListener('message', event => {
+            const message = event.data;
+            document.getElementById('output').textContent = message.text;
+        });
+    </script>
+</body>
+
+</html>
