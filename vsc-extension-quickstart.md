@@ -1,42 +1,53 @@
-# 欢迎使用你的 VS Code 扩展
+# 欢迎使用你的 VS Code 扩展 (QuickLingo)
+
+本扩展实现了在 VS Code 编辑器中选中文本后，通过右键菜单调用翻译命令，将文本翻译为中文。扩展内部使用了基于 axios 的 HTTP 请求，与翻译大模型服务(例如 OpenAI API) 对接，并通过 Webview 面板实时展示翻译结果。
 
 ## 文件夹中的内容
 
-* 此文件夹包含了你的扩展所需的所有文件。
-* `package.json` - 这是清单文件，在其中你声明了你的扩展和命令。
-  * 示例插件注册了一个命令并定义了它的标题和命令名称。通过这些信息，VS Code 可以在命令面板中显示该命令，而无需先加载插件。
-* `extension.js` - 这是你为实现命令提供逻辑的主要文件。
-  * 该文件导出了一个函数 `activate`，当你的扩展第一次被激活（在这里是通过执行命令来激活）时会调用该函数。在 `activate` 函数内部，我们调用了 `registerCommand`。
-  * 我们将包含命令实现的函数作为第二个参数传递给 `registerCommand`。
+* 此文件夹包含了扩展运行所需的全部文件。
+* `package.json` - 清单文件：
+  * 声明了扩展名称、版本号和简介。
+  * 注册了命令 `quicklingo.translateToChinese`，此命令在编辑器的右键菜单中显示（只在有文本选中时出现）。
+  * 定义了配置项，如 `quicklingo.apiKey`、`quicklingo.apiUrl`、`quicklingo.modelName` 与 `quicklingo.enableStreaming`，用于配置 API 请求参数。
+* `extension.js` - 主逻辑文件：
+  * 导出了 `activate` 方法，在扩展被激活时（比如执行翻译命令）调用。
+  * 实现了翻译命令的处理逻辑，通过 axios 发起 HTTP 请求，根据配置决定是否使用流式输出与错误处理。
+  * 通过 VS Code 的 Progress API 显示进度，同时集成超时与取消请求功能。
+  * 管理 Webview 面板显示翻译结果，读取本地的 `webview/webview.html` 文件作为显示内容。
 
 ## 立即开始
 
-* 按下 `F5` 打开一个加载了你扩展的新窗口。
-* 通过按下 (`Ctrl+Shift+P` 或 Mac 上的 `Cmd+Shift+P`) 并输入 `Hello World` 来从命令面板运行你的命令。
-* 在 `extension.js` 中设置断点以调试你的扩展。
-* 在调试控制台中查看你的扩展输出的信息。
+1. **启动调试**：
+   - 按下 `F5` 启动一个新的 VS Code 窗口以加载并调试扩展。
+2. **运行命令**：
+   - 在待翻译文件中选中一段文本，
+   - 右键点击并选择“翻译为中文”命令开始翻译。
+3. **调试与开发**：
+   - 在 `extension.js` 中设置断点，观察控制台输出调试信息。
+   - 当翻译过程中发生错误或超时，系统会弹窗提示错误信息。
 
 ## 修改代码
 
-* 在修改 `extension.js` 中的代码后，你可以从调试工具栏重新启动扩展。
-* 你也可以重新加载（`Ctrl+R` 或 Mac 上的 `Cmd+R`） VS Code 窗口以加载你的更改。
+* 在修改 `extension.js` 后，可以直接使用调试工具栏的“重新启动”按钮重新加载扩展。
+* 也可以重新加载（`Ctrl+R` 或 macOS 上的 `Cmd+R`）VS Code 窗口来应用更改。
 
 ## 探索 API
 
-* 当你打开 `node_modules/@types/vscode/index.d.ts` 文件时，你可以查看我们完整的 API 集合。
+* 查看 `node_modules/@types/vscode/index.d.ts` 文件，了解更多 VS Code 扩展 API。
+* 通过调试信息掌握如何处理流式响应、请求取消与超时逻辑。
 
 ## 运行测试
 
-* 安装 [Extension Test Runner](https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner)
-* 从活动栏打开 Testing 视图并点击 “Run Test” 按钮，或使用快捷键 `Ctrl/Cmd + ; A`
-* 查看测试结果在 Test Results 视图中的输出。
-* 修改 `test/extension.test.js` 中的代码或在 `test` 文件夹中创建新的测试文件。
-  * 提供的测试运行器只会考虑名称模式匹配 `**.test.js` 的文件。
-  * 你可以在 `test` 文件夹中创建子文件夹，以任意方式结构化你的测试。
+* 安装 [Extension Test Runner](https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner)。
+* 从活动栏打开 Testing 视图并点击 “Run Test” 按钮，或使用快捷键 `Ctrl/Cmd + ; A` 运行测试。
+* 修改 `test/extension.test.js` 或在 `test` 文件夹中新建测试文件，测试文件需符合 `**.test.js` 的命名规则。
 
 ## 进一步探索
 
-* [遵循 UX 指南](https://code.visualstudio.com/api/ux-guidelines/overview) 以创建与 VS Code 原生界面和模式无缝集成的扩展。
-* [发布你的扩展](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) 到 VS Code 扩展市场。
-* 通过设置 [持续集成](https://code.visualstudio.com/api/working-with-extensions/continuous-integration) 来实现自动构建。
-* 集成到 [报告问题](https://code.visualstudio.com/api/get-started/wrapping-up#issue-reporting) 流程中，以便用户报告问题和功能请求。
+* [遵循 UX 指南](https://code.visualstudio.com/api/ux-guidelines/overview) 以创建与 VS Code 原生界面无缝集成的扩展。
+* [发布扩展](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) 到 VS Code 市场。
+* 使用 [持续集成](https://code.visualstudio.com/api/working-with-extensions/continuous-integration) 自动构建并部署扩展。
+* 整合 [反馈流程](https://code.visualstudio.com/api/get-started/wrapping-up#issue-reporting) 以便用户提交问题和建议。
+
+---
+享受你的编码与翻译之旅！
