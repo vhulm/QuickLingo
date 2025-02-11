@@ -5,6 +5,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   build:
@@ -37,7 +42,7 @@ jobs:
           pkgVersion=$(node -p "require('./package.json').version")
           vsixName="${pkgName}-${pkgVersion}.vsix"
           echo "Extension file name: $vsixName"
-          echo "::set-output name=vsixName::$vsixName"
+          echo "vsixName=$vsixName" >> $GITHUB_OUTPUT
         shell: bash
 
       # 创建 GitHub Release
