@@ -59,10 +59,12 @@ function logInfo(message) {
 class TranslationService {
 	/**
 	 * 构建 axios 配置和请求数据
+	 * 增加 signal 参数用于支持取消和超时
 	 * @param {string} text 要翻译的文本
+	 * @param {AbortSignal} [signal] axios 请求信号
 	 * @returns {{axiosConfig: import('axios').AxiosRequestConfig, requestData: Object}}
 	 */
-	buildRequest(text) {
+	buildRequest(text, signal) {
 		const { apiKey, apiUrl, modelName, enableStreaming } = getConfig();
 		const requestData = {
 			model: modelName,
@@ -89,6 +91,11 @@ class TranslationService {
 		// 如果流式处理，则设置响应类型
 		if (enableStreaming) {
 			axiosConfig.responseType = 'stream';
+		}
+
+		// 增加取消信号，支持用户取消和超时
+		if (signal) {
+			axiosConfig.signal = signal;
 		}
 
 		return { axiosConfig, requestData };
@@ -122,8 +129,8 @@ class TranslationService {
 							fullText += delta;
 							panel.webview.postMessage({ text: fullText });
 						}
-					} catch (err) {
-						console.error('解析流数据块时出错：', err);
+					} catch (error) {
+						handleError('解析流数据块时出错：', error);
 					}
 				}
 			}
@@ -134,8 +141,13 @@ class TranslationService {
 		});
 
 		streamData.on('error', (error) => {
-			handleError('翻译流错误。', error);
-			panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+			// 判断是否是用户取消或者请求超时导致的错误
+			if (error.code === 'ERR_CANCELED') {
+				handleError('翻译已取消或超时。', error);
+			} else {
+				handleError('翻译流错误。', error);
+				panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+			}
 		});
 	}
 
@@ -143,15 +155,20 @@ class TranslationService {
 	 * 流式翻译处理
 	 * @param {string} text 要翻译的文本
 	 * @param {vscode.WebviewPanel} panel Webview 面板
+	 * @param {AbortSignal} signal 用于取消/超时的信号
 	 */
-	async translateTextStreaming(text, panel) {
-		const { axiosConfig } = this.buildRequest(text);
+	async translateTextStreaming(text, panel, signal) {
+		const { axiosConfig } = this.buildRequest(text, signal);
 		try {
 			const response = await axios(axiosConfig);
 			this.handleStreamResponse(response.data, panel);
 		} catch (error) {
-			handleError('流式翻译时出错。', error);
-			panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+			if (error.code === 'ERR_CANCELED') {
+				handleError('翻译已取消或超时。', error);
+			} else {
+				handleError('流式翻译时出错。', error);
+				panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+			}
 		}
 	}
 
@@ -159,9 +176,10 @@ class TranslationService {
 	 * 非流式翻译处理：一次性获取完整结果
 	 * @param {string} text 要翻译的文本
 	 * @param {vscode.WebviewPanel} panel Webview 面板
+	 * @param {AbortSignal} signal 用于取消/超时的信号
 	 */
-	async translateTextNonStreaming(text, panel) {
-		const { axiosConfig } = this.buildRequest(text);
+	async translateTextNonStreaming(text, panel, signal) {
+		const { axiosConfig } = this.buildRequest(text, signal);
 		try {
 			const response = await axios(axiosConfig);
 			let fullText = '';
@@ -177,8 +195,12 @@ class TranslationService {
 			// 直接一次性展示所有翻译结果
 			panel.webview.postMessage({ text: fullText });
 		} catch (error) {
-			handleError('非流式翻译时出错。', error);
-			panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+			if (error.code === 'ERR_CANCELED') {
+				handleError('翻译已取消或超时。', error);
+			} else {
+				handleError('非流式翻译时出错。', error);
+				panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+			}
 		}
 	}
 
@@ -186,13 +208,14 @@ class TranslationService {
 	 * 根据配置判断使用流式或非流式处理
 	 * @param {string} text 要翻译的文本
 	 * @param {vscode.WebviewPanel} panel Webview 面板
+	 * @param {AbortSignal} signal 用于取消/超时的信号
 	 */
-	async translateToChinese(text, panel) {
+	async translateToChinese(text, panel, signal) {
 		const { enableStreaming } = getConfig();
 		if (enableStreaming) {
-			await this.translateTextStreaming(text, panel);
+			await this.translateTextStreaming(text, panel, signal);
 		} else {
-			await this.translateTextNonStreaming(text, panel);
+			await this.translateTextNonStreaming(text, panel, signal);
 		}
 	}
 }
@@ -284,10 +307,44 @@ async function handleTranslateCommand() {
 		return;
 	}
 
-	const { extensionDisplayName } = getConfig();
-	vscode.window.showInformationMessage(`${extensionDisplayName}: 正在翻译，请稍候...`);
 	const panel = webviewManager.createOrShowPanel();
-	await translationService.translateToChinese(selectedText, panel);
+
+	// 使用 VS Code 的 Progress API 显示进度提示，同时允许用户取消操作
+	// 设置超时时间（例如 60 秒）
+	const timeoutMs = 60000;
+
+	await vscode.window.withProgress({
+		location: vscode.ProgressLocation.Notification,
+		title: '正在翻译中...',
+		cancellable: true,
+	}, async (progress, token) => {
+		// 创建一个 AbortController 用于取消请求
+		const abortController = new AbortController();
+
+		// 监听 VS Code 的取消事件，触发取消请求
+		token.onCancellationRequested(() => {
+			abortController.abort();
+		});
+
+		// 定义超时逻辑：如果超时则中止翻译请求
+		const timeoutPromise = new Promise((resolve, reject) => {
+			setTimeout(() => {
+				// 超时后取消翻译请求
+				abortController.abort();
+				reject(new Error('翻译请求超时，请稍候重试。'));
+			}, timeoutMs);
+		});
+
+		// 开始翻译请求
+		const translatePromise = translationService.translateToChinese(selectedText, panel, abortController.signal);
+
+		// 通过 Promise.race 实现超时和取消的功能
+		await Promise.race([translatePromise, timeoutPromise]).then(result => {
+			logInfo("翻译完成。")
+		}).catch(error => {
+			panel.webview.postMessage({ text: error.message });
+		});
+	});
 }
 // #endregion 命令处理
 
