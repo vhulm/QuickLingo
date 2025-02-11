@@ -21,7 +21,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "16"
+          node-version: "22"
 
       # 安装项目依赖，确保打包扩展时所有依赖均已安装
       - name: Install Dependencies
