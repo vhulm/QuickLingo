@@ -4,6 +4,10 @@
   "description": "Focuses on the fast, intuitive translation experience.",
   "version": "0.0.1",
   "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vhulm/QuickLingo.git"
+  },
   "engines": {
     "vscode": "^1.97.0"
   },
@@ -30,6 +34,11 @@
           "type": "string",
           "default": "gpt-4o",
           "description": "用于翻译的模型名称。"
+        },
+        "quicklingo.enableStreaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用流式输出。部分模型不支持流式输出，可设置为 false 使用一次性返回方式。"
         }
       }
     },

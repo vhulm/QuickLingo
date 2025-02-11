@@ -11,13 +11,15 @@ const path = require('path');
  *   quicklingo.apiKey
  *   quicklingo.apiUrl
  *   quicklingo.modelName
+ *   quicklingo.enableStreaming
  */
 function getConfig() {
 	const configuration = vscode.workspace.getConfiguration('quicklingo');
 	return {
-		apiKey: configuration.get('apiKey', ''), // 默认值为空字符串
+		apiKey: configuration.get('apiKey', ''),
 		apiUrl: configuration.get('apiUrl', 'https://api.openai.com/v1/chat/completions'),
 		modelName: configuration.get('modelName', 'gpt-4o'),
+		enableStreaming: configuration.get('enableStreaming', true),
 		webviewTitle: '翻译结果',
 		extensionDisplayName: 'QuickLingo',
 	};
@@ -37,7 +39,7 @@ function handleError(message, error) {
 	const { extensionDisplayName } = getConfig();
 	vscode.window.showErrorMessage(`${extensionDisplayName}: ${message}`);
 	if (error) {
-		console.error(`${extensionDisplayName}: ${message}`, error); // 记录错误以进行调试
+		console.error(`${extensionDisplayName}: ${message}`, error);
 	}
 }
 
@@ -54,94 +56,147 @@ function logInfo(message) {
 
 // #region 翻译服务
 
-/**
- * TranslationService 类
- * 封装翻译逻辑，使其更容易在将来替换不同的翻译提供程序。
- */
 class TranslationService {
 	/**
-	 * 使用流式 API 将给定的文本翻译成中文。
-	 *
-	 * @param {string} text 要翻译的文本。
-	 * @param {vscode.WebviewPanel} panel 用于显示结果的 Webview 面板。
-	 * @returns {Promise<void>}
+	 * 构建 axios 配置和请求数据
+	 * @param {string} text 要翻译的文本
+	 * @returns {{axiosConfig: import('axios').AxiosRequestConfig, requestData: Object}}
 	 */
-	async translateToChineseStreaming(text, panel) {
-		const { apiKey, apiUrl, modelName } = getConfig();
-		const data = JSON.stringify({
-			"model": modelName,
-			"stream": true,
-			"messages": [
+	buildRequest(text) {
+		const { apiKey, apiUrl, modelName, enableStreaming } = getConfig();
+		const requestData = {
+			model: modelName,
+			stream: enableStreaming,
+			messages: [
 				{
-					"role": "user",
-					"content": `请把下面内容翻译为中文：\n${text}`
-				}
-			]
-		});
+					role: "user",
+					content: `请把下面内容翻译为中文：\n${text}`,
+				},
+			],
+		};
 
-		/** @type {import('axios').AxiosRequestConfig} */
 		const axiosConfig = {
 			method: 'post',
 			url: apiUrl,
 			headers: {
 				'Accept': 'application/json',
 				'Authorization': `Bearer ${apiKey}`,
-				'Content-Type': 'application/json'
+				'Content-Type': 'application/json',
 			},
-			data: data,
-			responseType: 'stream'
+			data: JSON.stringify(requestData),
 		};
 
+		// 如果流式处理，则设置响应类型
+		if (enableStreaming) {
+			axiosConfig.responseType = 'stream';
+		}
+
+		return { axiosConfig, requestData };
+	}
+
+	/**
+	 * 处理流式翻译响应
+	 * @param {any} streamData axios 流响应
+	 * @param {vscode.WebviewPanel} panel 用于显示结果的 Webview 面板
+	 */
+	handleStreamResponse(streamData, panel) {
+		let fullText = '';
+		streamData.on('data', (chunk) => {
+			const chunkText = chunk.toString();
+			const lines = chunkText.split('\n');
+			for (let line of lines) {
+				line = line.trim();
+				if (!line) continue;
+				if (line.startsWith('data:')) {
+					const dataStr = line.replace(/^data:\s*/, '');
+					if (dataStr === '[DONE]') {
+						return;
+					}
+					try {
+						const jsonData = JSON.parse(dataStr);
+						const delta = jsonData.choices &&
+							jsonData.choices[0] &&
+							jsonData.choices[0].delta &&
+							jsonData.choices[0].delta.content;
+						if (delta) {
+							fullText += delta;
+							panel.webview.postMessage({ text: fullText });
+						}
+					} catch (err) {
+						console.error('解析流数据块时出错：', err);
+					}
+				}
+			}
+		});
+
+		streamData.on('end', () => {
+			logInfo('流已结束。');
+		});
+
+		streamData.on('error', (error) => {
+			handleError('翻译流错误。', error);
+			panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+		});
+	}
+
+	/**
+	 * 流式翻译处理
+	 * @param {string} text 要翻译的文本
+	 * @param {vscode.WebviewPanel} panel Webview 面板
+	 */
+	async translateTextStreaming(text, panel) {
+		const { axiosConfig } = this.buildRequest(text);
+		try {
+			const response = await axios(axiosConfig);
+			this.handleStreamResponse(response.data, panel);
+		} catch (error) {
+			handleError('流式翻译时出错。', error);
+			panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+		}
+	}
+
+	/**
+	 * 非流式翻译处理：一次性获取完整结果
+	 * @param {string} text 要翻译的文本
+	 * @param {vscode.WebviewPanel} panel Webview 面板
+	 */
+	async translateTextNonStreaming(text, panel) {
+		const { axiosConfig } = this.buildRequest(text);
 		try {
 			const response = await axios(axiosConfig);
 			let fullText = '';
-
-			response.data.on('data', (chunk) => {
-				const chunkText = chunk.toString();
-				const lines = chunkText.split('\n');
-				for (let line of lines) {
-					line = line.trim();
-					if (!line) continue;
-					if (line.startsWith('data:')) {
-						const dataStr = line.replace(/^data:\s*/, '');
-						if (dataStr === '[DONE]') {
-							return;
-						}
-						try {
-							const jsonData = JSON.parse(dataStr);
-							// 使用稳健的方式获取增量文本
-							const delta = jsonData.choices &&
-								jsonData.choices[0] &&
-								jsonData.choices[0].delta &&
-								jsonData.choices[0].delta.content;
-							if (delta) {
-								fullText += delta;
-								panel.webview.postMessage({ text: fullText });
-							}
-						} catch (err) {
-							console.error('解析流数据块时出错:', err);
-						}
-					}
-				}
-			});
-
-			response.data.on('end', () => {
-				logInfo('流已结束。');
-			});
-
-			response.data.on('error', (error) => {
-				handleError('翻译流错误。', error);
-				panel.webview.postMessage({ text: '翻译失败,请稍候重试.' });
-			});
-
+			if (
+				response.data &&
+				response.data.choices &&
+				response.data.choices[0] &&
+				response.data.choices[0].message &&
+				response.data.choices[0].message.content
+			) {
+				fullText = response.data.choices[0].message.content;
+			}
+			// 直接一次性展示所有翻译结果
+			panel.webview.postMessage({ text: fullText });
 		} catch (error) {
-			handleError('流式翻译时出错。', error);
-			panel.webview.postMessage({ text: '翻译失败,请稍候重试.' });
+			handleError('非流式翻译时出错。', error);
+			panel.webview.postMessage({ text: '翻译失败，请稍候重试.' });
+		}
+	}
+
+	/**
+	 * 根据配置判断使用流式或非流式处理
+	 * @param {string} text 要翻译的文本
+	 * @param {vscode.WebviewPanel} panel Webview 面板
+	 */
+	async translateToChinese(text, panel) {
+		const { enableStreaming } = getConfig();
+		if (enableStreaming) {
+			await this.translateTextStreaming(text, panel);
+		} else {
+			await this.translateTextNonStreaming(text, panel);
 		}
 	}
 }
 
-// 创建 TranslationService 的单个实例
 const translationService = new TranslationService();
 // #endregion 翻译服务
 
@@ -232,7 +287,7 @@ async function handleTranslateCommand() {
 	const { extensionDisplayName } = getConfig();
 	vscode.window.showInformationMessage(`${extensionDisplayName}: 正在翻译，请稍候...`);
 	const panel = webviewManager.createOrShowPanel();
-	await translationService.translateToChineseStreaming(selectedText, panel);
+	await translationService.translateToChinese(selectedText, panel);
 }
 // #endregion 命令处理
 
