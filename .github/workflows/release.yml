@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - "v*"
+
   workflow_dispatch:
 
 permissions:
@@ -16,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
 
@@ -33,8 +34,8 @@ jobs:
       - name: Package VS Code Extension
         run: vsce package
         # 此步骤会生成一个扩展包，通常文件名格式为 <package-name>-<version>.vsix
-        
-      # 通过读取 package.json 的 name 和 version 自动构造生成的 vsix 文件名称
+
+      # 通过读取 package.json 的 name 和 version 自动构造生成的 vsix 文件名称，同时保存版本号
       - name: Get Extension File Name
         id: get_extension_name
         run: |
@@ -43,9 +44,10 @@ jobs:
           vsixName="${pkgName}-${pkgVersion}.vsix"
           echo "Extension file name: $vsixName"
           echo "vsixName=$vsixName" >> $GITHUB_OUTPUT
+          echo "pkgVersion=$pkgVersion" >> $GITHUB_OUTPUT
         shell: bash
 
-      # 创建 GitHub Release
+      # 创建 GitHub Release，release_name 使用 package.json 中的版本号
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
@@ -53,7 +55,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          release_name: Release v${{ steps.get_extension_name.outputs.pkgVersion }}
           draft: false
           prerelease: false
 
