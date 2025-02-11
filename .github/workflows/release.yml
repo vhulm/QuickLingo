@@ -21,7 +21,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "22"
+          node-version: "16"
 
       # 安装项目依赖，确保打包扩展时所有依赖均已安装
       - name: Install Dependencies
@@ -33,12 +33,12 @@ jobs:
       - name: Package VS Code Extension
         run: vsce package
         # 此步骤会生成一个扩展包，通常文件名格式为 <package-name>-<version>.vsix
-
-      # 通过读取 package.json 的 displayName 和 version 自动构造生成的 vsix 文件名称
+        
+      # 通过读取 package.json 的 name 和 version 自动构造生成的 vsix 文件名称
       - name: Get Extension File Name
         id: get_extension_name
         run: |
-          pkgName=$(node -p "require('./package.json').displayName")
+          pkgName=$(node -p "require('./package.json').name")
           pkgVersion=$(node -p "require('./package.json').version")
           vsixName="${pkgName}-${pkgVersion}.vsix"
           echo "Extension file name: $vsixName"
@@ -64,6 +64,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./*.vsix
+          asset_path: ${{ steps.get_extension_name.outputs.vsixName }}
           asset_name: ${{ steps.get_extension_name.outputs.vsixName }}
           asset_content_type: application/octet-stream
