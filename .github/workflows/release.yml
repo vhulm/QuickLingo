@@ -1,0 +1,64 @@
+name: Package and Release VS Code Extension
+
+# 当打标签时触发，其中标签名需匹配 v* 的格式，例如 v1.0.0
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "22"
+
+      # 安装项目依赖，确保打包扩展时所有依赖均已安装
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install vsce globally
+        run: npm install -g vsce
+
+      - name: Package VS Code Extension
+        run: vsce package
+        # 此步骤会生成一个扩展包，通常文件名格式为 <package-name>-<version>.vsix
+
+      # 通过读取 package.json 的 displayName 和 version 自动构造生成的 vsix 文件名称
+      - name: Get Extension File Name
+        id: get_extension_name
+        run: |
+          pkgName=$(node -p "require('./package.json').displayName")
+          pkgVersion=$(node -p "require('./package.json').version")
+          vsixName="${pkgName}-${pkgVersion}.vsix"
+          echo "Extension file name: $vsixName"
+          echo "::set-output name=vsixName::$vsixName"
+        shell: bash
+
+      # 创建 GitHub Release
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      # 上传生成的 vsix 文件到 Release，文件名称从上一步获取
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./*.vsix
+          asset_name: ${{ steps.get_extension_name.outputs.vsixName }}
+          asset_content_type: application/octet-stream
